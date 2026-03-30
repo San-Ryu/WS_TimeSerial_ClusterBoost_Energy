@@ -1,0 +1,48 @@
+# ==============================================================================
+# Python 3.11.9
+# ==============================================================================
+
+# --- Data Science Core ---
+numpy>=2.2.3
+pandas>=2.2.3
+scipy>=1.15.2
+
+# --- Visualization ---
+matplotlib>=3.10.1
+seaborn
+
+# --- Statistics ---
+statsmodels
+
+# --- Machine Learning (scikit-learn) ---
+scikit-learn
+
+# --- Boosting Models ---
+catboost
+lightgbm
+xgboost
+
+# --- Deep Learning: TensorFlow / Keras ---
+tensorflow
+tensorflow-addons
+keras-flops
+
+# --- Deep Learning: PyTorch ---
+torch
+pytorch-lightning
+
+# --- Web Scraping / API ---
+requests
+beautifulsoup4
+selenium
+webdriver-manager
+
+# --- Excel I/O ---
+openpyxl
+xlrd
+
+# --- Utilities ---
+tqdm
+
+# --- Jupyter ---
+ipykernel
