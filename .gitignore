@@ -4,3 +4,6 @@ __pycache__/
 catboost_info/
 *.tmp
 temp.csv
+
+# 저작권 보호 논문 PDF
+paper/A machine learning ensemble framework based on a clustering algorithm for improving electric power consumption performance.pdf

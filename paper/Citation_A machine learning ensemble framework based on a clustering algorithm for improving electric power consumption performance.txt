@@ -1,0 +1,20 @@
+TY  - JOUR
+AU  - Sim, Taeyong
+AU  - Ryu, Sanghyun
+AU  - Lee, Dongjun
+AU  - Lee, Sujin
+AU  - Chun, Chang-Jae
+AU  - Moon, Hyeonjoon
+PY  - 2025
+DA  - 2025/11/17
+TI  - A machine learning ensemble framework based on a clustering algorithm for improving electric power consumption performance
+JO  - Scientific Reports
+SP  - 40172
+VL  - 15
+IS  - 1
+AB  - Accurate prediction of electric energy consumption is critical for both user convenience and supplier efficiency. This study introduces an ensemble approach that integrates clustering algorithms with machine learning (ML) models to enhance prediction accuracy by identifying consumption patterns within buildings. The research focused on residential apartments in the metropolitan area of Korea, utilizing four evaluation methods (Elbow-Method, Silhouette Score, Calinski-Harabasz Index, and Dunn Index) across five data collection intervals (10 min, 1 h, 1 day, 1 week, and 1 month). Five ML models (CatBoost, Decision Tree, LightGBM, Random Forest, XGBoost) were assessed for their prediction performance across clusters. Additionally, ML models that exhibited high performance within each cluster were amalgamated into an ensemble model to assess the predictive performance regarding total electric energy consumption at the research site. Optimal clustering resulted in two clusters (142 houses for C0, 206 houses for C1) using monthly resampled power data. CatBoost and LightGBM exhibited the highest average prediction performance. Based on the possible combinations of the two models applied to each cluster, four ensemble models were developed: CB-CB, CB-LGBM, LGBM-CB, and LGBM-LGBM. Statistical analysis confirmed that all ensemble models significantly outperformed the control group’s traditional ML approaches without clustering (p < 0.05 or 0.01). The proposed clustering-based ML ensemble model in this study can predict the energy consumed in buildings more accurately by accounting for the unique consumption pattern of each house. It is anticipated to contribute effectively to energy consumption reduction.
+SN  - 2045-2322
+UR  - https://doi.org/10.1038/s41598-025-23978-w
+DO  - 10.1038/s41598-025-23978-w
+ID  - Sim2025
+ER  - 
