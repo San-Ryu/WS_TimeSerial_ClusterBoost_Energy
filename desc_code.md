@@ -24,7 +24,7 @@ WS_TimeSerial_ClusterBoost_Energy/
 
 | 파일 | 역할 |
 |---|---|
-| `data_pipeline.py` | Raw long-format → Wide-format pivot (`raw_to_wide`), 3단계 결측치 보간 (`fill_missing_wide`) |
+| `data_pipeline.py` | Raw long-format → Wide-format pivot (`raw_to_wide`), 3단계 결측치 보간 (`fill_missing_wide`) (단, 결측치 보간은 각 시간대별 전 세대 평균 사용량으로 대치 및 선형 보간 방법을 사용함. 보간 방법 선정 과정의 경우 논문에 포함되어있지 않음 (향후 과제에서 추가 예정)) |
 | `data_preprocessing.py` | 시간 단위별 리샘플링(`resample_by_last`), IQR 기반 이상치 제거 |
 | `data_analysis.py` | 기술통계, 이상치 탐지, OLS 회귀 잔차, 예측 지표(MAE/MSE/RMSE/R²) 계산 |
 | `data_datetime.py` | 날짜·시간 파싱·검증, 공휴일 포함 달력 특성 생성 |
