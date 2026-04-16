@@ -48,7 +48,7 @@ WS_TimeSerial_ClusterBoost_Energy/
 | 파일 | 역할 |
 |---|---|
 | `model_ml.py` | CB / DT / LGBM / RF / XGB 학습·예측·KFold CV, 지표·시각화 공용 함수 (DL 모듈에서도 import) |
-| `model_dl.py` | 1D-CNN LSTM / 1D-CNN Seq2Seq 학습·예측·KFold CV, `model_ml`의 공용 함수 재사용 |
+| `model_dl.py` | 1D-CNN LSTM · Seq2Seq · TCN · Transformer · RetNet 학습·예측·KFold CV, `model_ml`의 공용 함수 재사용 |
 
 ### 외부 참조
 
@@ -74,7 +74,7 @@ WS_TimeSerial_ClusterBoost_Energy/
 | `clustering_02_integration.ipynb` | 클러스터링 | 클러스터 레이블 기반 세대 데이터 통합·저장 |
 | `model_00_index.ipynb` | 모델 진입점 | `model_ml_01_cv.ipynb` / `model_dl_01_cnnlstm.ipynb` 실행 진입점, 파라미터 안내 |
 | `model_ml_01_cv.ipynb` | 모델 학습 | CB/XGB/LGBM/DT/RF 단일 학습 → KFold CV → 클러스터별 CV → 앙상블 비교 |
-| `model_dl_01_cnnlstm.ipynb` | 모델 학습 | 1D-CNN LSTM / Seq2Seq 단일·군집화 KFold CV · 비교 |
+| `model_dl_01_cnnlstm.ipynb` | 모델 학습 | 1D-CNN LSTM · Seq2Seq · TCN · Transformer · RetNet 단일·군집화 KFold CV · 전체 비교 |
 
 ---
 

@@ -1,10 +1,15 @@
 """
 Common_Model_DL.py
-DL 모델 (1D-CNN LSTM / 1D-CNN Seq2Seq) 학습·예측·평가 공통 모듈
+DL 모델 학습·예측·평가 공통 모듈
+  - 1D-CNN LSTM / 1D-CNN Seq2Seq
+  - TCN (Temporal Convolutional Network)
+  - Transformer Encoder
+  - RetNet (Retentive Network)
 
 History
   2024-04-05  Created
   2026-03-30  Refactored - import 정리, 중복 함수 제거 (Common_Model_ML에서 import)
+  2026-04-15  TCN / Transformer / RetNet 모델 추가
 """
 
 import time
@@ -101,6 +106,224 @@ def build_1dcnn_seq2seq(input_shape, activation: str = "swish"):
     flat = tf.keras.layers.Flatten()(dec3)
     out = tf.keras.layers.Dense(1)(flat)
     return "1D-CNN_Seq2Seq", tf.keras.models.Model(inp, out)
+
+
+# =========================================================================== #
+#  Model Builders — TCN
+# =========================================================================== #
+
+def _tcn_block(x, filters: int, kernel_size: int, dilation_rate: int,
+               dropout_rate: float, activation: str):
+    """
+    TCN 잔차 블록.
+    2× (dilated causal Conv1D → LayerNorm → Activation → Dropout) + residual 투영.
+    """
+    residual = x
+
+    for _ in range(2):
+        x = tf.keras.layers.Conv1D(
+            filters, kernel_size,
+            padding="causal", dilation_rate=dilation_rate,
+        )(x)
+        x = tf.keras.layers.LayerNormalization()(x)
+        x = tf.keras.layers.Activation(activation)(x)
+        x = tf.keras.layers.Dropout(dropout_rate)(x)
+
+    # 차원 불일치 시 residual 투영
+    if residual.shape[-1] != filters:
+        residual = tf.keras.layers.Conv1D(filters, 1)(residual)
+
+    return tf.keras.layers.Add()([x, residual])
+
+
+def build_tcn(n_features: int, seq_len: int,
+              nb_filters: int = 64,
+              kernel_size: int = 3,
+              dilations: list | None = None,
+              dropout_rate: float = 0.1,
+              activation: str = "relu"):
+    """
+    KIER M02 — TCN (Temporal Convolutional Network) 모델.
+
+    dilated causal convolution + 잔차 연결로 장기 의존성을 포착.
+    수용 영역(receptive field) = 2 × (kernel_size-1) × Σ(dilations).
+    """
+    if dilations is None:
+        dilations = [1, 2, 4, 8]
+
+    inp = tf.keras.layers.Input(shape=(seq_len, n_features))
+    x = inp
+    for d in dilations:
+        x = _tcn_block(x, nb_filters, kernel_size, d, dropout_rate, activation)
+
+    x = tf.keras.layers.GlobalAveragePooling1D()(x)
+    x = tf.keras.layers.Dense(64, activation=activation)(x)
+    out = tf.keras.layers.Dense(1)(x)
+    return "TCN", tf.keras.models.Model(inp, out)
+
+
+# =========================================================================== #
+#  Model Builders — Transformer
+# =========================================================================== #
+
+def _transformer_encoder_block(x, d_model: int, num_heads: int,
+                                ff_dim: int, dropout_rate: float):
+    """Transformer Encoder 블록: MHA → Add&Norm → FFN → Add&Norm."""
+    # Multi-Head Self-Attention
+    attn = tf.keras.layers.MultiHeadAttention(
+        num_heads=num_heads,
+        key_dim=d_model // num_heads,
+        dropout=dropout_rate,
+    )(x, x)
+    x = tf.keras.layers.LayerNormalization(epsilon=1e-6)(x + attn)
+
+    # Position-wise Feed-Forward
+    ffn = tf.keras.layers.Dense(ff_dim, activation="relu")(x)
+    ffn = tf.keras.layers.Dense(d_model)(ffn)
+    ffn = tf.keras.layers.Dropout(dropout_rate)(ffn)
+    x = tf.keras.layers.LayerNormalization(epsilon=1e-6)(x + ffn)
+    return x
+
+
+def build_transformer(n_features: int, seq_len: int,
+                      d_model: int = 128,
+                      num_heads: int = 4,
+                      ff_dim: int = 256,
+                      num_layers: int = 2,
+                      dropout_rate: float = 0.1):
+    """
+    KIER M02 — Transformer Encoder 기반 예측 모델.
+
+    Sinusoidal positional encoding + Multi-Head Self-Attention + FFN.
+    """
+    inp = tf.keras.layers.Input(shape=(seq_len, n_features))
+    x = tf.keras.layers.Dense(d_model)(inp)
+
+    # Sinusoidal positional encoding
+    positions = np.arange(seq_len)[:, np.newaxis]
+    dims = np.arange(d_model)[np.newaxis, :]
+    angles = positions / np.power(10000.0, (2 * (dims // 2)) / d_model)
+    angles[:, 0::2] = np.sin(angles[:, 0::2])
+    angles[:, 1::2] = np.cos(angles[:, 1::2])
+    pos_enc = tf.cast(angles[np.newaxis], dtype=tf.float32)  # (1, seq_len, d_model)
+    x = x + pos_enc
+    x = tf.keras.layers.Dropout(dropout_rate)(x)
+
+    for _ in range(num_layers):
+        x = _transformer_encoder_block(x, d_model, num_heads, ff_dim, dropout_rate)
+
+    x = tf.keras.layers.GlobalAveragePooling1D()(x)
+    x = tf.keras.layers.Dense(64, activation="relu")(x)
+    out = tf.keras.layers.Dense(1)(x)
+    return "Transformer", tf.keras.models.Model(inp, out)
+
+
+# =========================================================================== #
+#  Model Builders — RetNet
+# =========================================================================== #
+
+class _MultiScaleRetention(tf.keras.layers.Layer):
+    """
+    Multi-Scale Retention (병렬 모드).
+
+    RetNet 핵심 블록 — Sun et al. 2023 "Retentive Network" §3.
+    decay γ_h = 1 - 2^(-5-h),  h = 0 … num_heads-1
+    D[m,n] = γ^(m-n) if m ≥ n else 0  (인과 감쇠 마스크)
+    Ret_h(X) = (Q_h K_h^T ⊙ D / √d_h) V_h
+    출력 = W_O( LayerNorm(concat(Ret_h)) ⊙ swish(W_G X) )
+    """
+
+    def __init__(self, d_model: int, num_heads: int, **kwargs):
+        super().__init__(**kwargs)
+        assert d_model % num_heads == 0, "d_model must be divisible by num_heads"
+        self.num_heads = num_heads
+        self.head_dim  = d_model // num_heads
+        self.d_model   = d_model
+        self.gammas    = [1.0 - 2.0 ** (-5 - h) for h in range(num_heads)]
+
+        self.W_Q = tf.keras.layers.Dense(d_model, use_bias=False)
+        self.W_K = tf.keras.layers.Dense(d_model, use_bias=False)
+        self.W_V = tf.keras.layers.Dense(d_model, use_bias=False)
+        self.W_G = tf.keras.layers.Dense(d_model)
+        self.W_O = tf.keras.layers.Dense(d_model)
+        self.layer_norm = tf.keras.layers.LayerNormalization()
+
+    def call(self, x, training=None):
+        B = tf.shape(x)[0]
+        T = tf.shape(x)[1]
+
+        Q = self.W_Q(x)                                         # (B, T, d_model)
+        K = self.W_K(x)
+        V = self.W_V(x)
+        G = tf.nn.swish(self.W_G(x))
+
+        # (B, T, d_model) → (B, H, T, d_h)
+        def split_heads(z):
+            z = tf.reshape(z, [B, T, self.num_heads, self.head_dim])
+            return tf.transpose(z, [0, 2, 1, 3])
+
+        Q, K, V = split_heads(Q), split_heads(K), split_heads(V)
+
+        # 인과 감쇠 마스크 (공통)
+        idx  = tf.cast(tf.range(T), tf.float32)
+        diff = idx[:, tf.newaxis] - idx[tf.newaxis, :]          # (T, T)
+        causal = tf.cast(diff >= 0, tf.float32)
+
+        scale = tf.cast(self.head_dim, tf.float32) ** 0.5
+        heads_out = []
+        for h in range(self.num_heads):
+            D = tf.pow(self.gammas[h], tf.maximum(diff, 0.0)) * causal   # (T, T)
+            scores = tf.matmul(Q[:, h], K[:, h], transpose_b=True) / scale  # (B,T,T)
+            ret_h  = tf.matmul(scores * D[tf.newaxis], V[:, h])           # (B,T,d_h)
+            heads_out.append(ret_h)
+
+        # (B, T, H, d_h) → (B, T, d_model)
+        ret = tf.stack(heads_out, axis=2)
+        ret = tf.reshape(ret, [B, T, self.d_model])
+
+        ret = self.layer_norm(ret) * G
+        return self.W_O(ret)
+
+    def get_config(self):
+        cfg = super().get_config()
+        cfg.update({"d_model": self.d_model, "num_heads": self.num_heads})
+        return cfg
+
+
+def build_retnet(n_features: int, seq_len: int,
+                 d_model: int = 128,
+                 num_heads: int = 4,
+                 ff_dim: int = 256,
+                 num_layers: int = 2,
+                 dropout_rate: float = 0.1):
+    """
+    KIER M02 — RetNet (Retentive Network) 예측 모델.
+
+    Multi-Scale Retention + FFN, num_layers 회 적층.
+    Transformer 대비 O(T) 추론 복잡도 (병렬 모드 학습, 순환 모드 추론).
+    """
+    inp = tf.keras.layers.Input(shape=(seq_len, n_features))
+    x = tf.keras.layers.Dense(d_model)(inp)
+    x = tf.keras.layers.Dropout(dropout_rate)(x)
+
+    for _ in range(num_layers):
+        # Retention 블록
+        residual = x
+        ret = _MultiScaleRetention(d_model, num_heads)(x)
+        ret = tf.keras.layers.Dropout(dropout_rate)(ret)
+        x = tf.keras.layers.LayerNormalization()(residual + ret)
+
+        # FFN 블록
+        residual = x
+        ffn = tf.keras.layers.Dense(ff_dim, activation="gelu")(x)
+        ffn = tf.keras.layers.Dense(d_model)(ffn)
+        ffn = tf.keras.layers.Dropout(dropout_rate)(ffn)
+        x = tf.keras.layers.LayerNormalization()(residual + ffn)
+
+    x = tf.keras.layers.GlobalAveragePooling1D()(x)
+    x = tf.keras.layers.Dense(64, activation="gelu")(x)
+    out = tf.keras.layers.Dense(1)(x)
+    return "RetNet", tf.keras.models.Model(inp, out)
 
 
 # =========================================================================== #
